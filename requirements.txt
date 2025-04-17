@@ -5,7 +5,8 @@ pandas==2.2.1
 numpy==1.26.4
 plotly==5.19.0
 python-dotenv==1.0.1
-six>=1.10.0
-lz4>=4.3.2
-xxhash>=3.4.1
-zstandard>=0.22.0 
+six==1.16.0
+lz4==4.3.2
+xxhash==3.4.1
+zstandard==0.22.0
+python-snappy==0.6.1 
