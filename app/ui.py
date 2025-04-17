@@ -16,6 +16,13 @@ st.set_page_config(
 # Title
 st.title("Real-time Fraud Detection Dashboard")
 
+# Kafka Configuration
+KAFKA_CONFIG = {
+    'bootstrap_servers': 'localhost:9092',
+    'fraud_alerts_topic': 'fraud_alerts',
+    'top_products_topic': 'top_products'
+}
+
 # Initialize session state
 if 'fraud_data' not in st.session_state:
     st.session_state.fraud_data = []
@@ -30,14 +37,11 @@ if 'product_consumer' not in st.session_state:
 
 # Initialize Kafka consumer
 def get_kafka_consumer(topic):
-    # Get Kafka configuration from secrets
-    kafka_config = st.secrets.kafka
-    
-    if topic == kafka_config.fraud_alerts_topic and st.session_state.fraud_consumer is None:
+    if topic == KAFKA_CONFIG['fraud_alerts_topic'] and st.session_state.fraud_consumer is None:
         try:
             st.session_state.fraud_consumer = KafkaConsumer(
                 topic,
-                bootstrap_servers=[kafka_config.bootstrap_servers],
+                bootstrap_servers=[KAFKA_CONFIG['bootstrap_servers']],
                 auto_offset_reset='earliest',
                 enable_auto_commit=True,
                 value_deserializer=lambda x: json.loads(x.decode('utf-8')),
@@ -47,11 +51,11 @@ def get_kafka_consumer(topic):
             st.error(f"Failed to connect to Kafka: {str(e)}")
             return None
             
-    elif topic == kafka_config.top_products_topic and st.session_state.product_consumer is None:
+    elif topic == KAFKA_CONFIG['top_products_topic'] and st.session_state.product_consumer is None:
         try:
             st.session_state.product_consumer = KafkaConsumer(
                 topic,
-                bootstrap_servers=[kafka_config.bootstrap_servers],
+                bootstrap_servers=[KAFKA_CONFIG['bootstrap_servers']],
                 auto_offset_reset='earliest',
                 enable_auto_commit=True,
                 value_deserializer=lambda x: json.loads(x.decode('utf-8')),
@@ -61,7 +65,7 @@ def get_kafka_consumer(topic):
             st.error(f"Failed to connect to Kafka: {str(e)}")
             return None
     
-    return st.session_state.fraud_consumer if topic == kafka_config.fraud_alerts_topic else st.session_state.product_consumer
+    return st.session_state.fraud_consumer if topic == KAFKA_CONFIG['fraud_alerts_topic'] else st.session_state.product_consumer
 
 # Create two columns for the dashboard
 col1, col2 = st.columns(2)

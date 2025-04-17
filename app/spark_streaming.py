@@ -3,6 +3,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 from pyspark.sql.functions import col, explode, from_json, window, when, count, min, max, hour, avg, year, current_date, round, datediff, lit, from_unixtime, unix_timestamp
 from pyspark.ml import PipelineModel
 import os
+import toml
 
 class FraudDetectionStreaming:
     def __init__(self, model_path, checkpoint_location="/tmp/spark-checkpoint"):
@@ -17,6 +18,36 @@ class FraudDetectionStreaming:
             print(f"Error loading model: {str(e)}")
             raise
         self.schemas = self._define_schemas()
+        self.kafka_config = self._load_kafka_config()
+
+    def _load_kafka_config(self):
+        try:
+            # Load Kafka configuration from .streamlit/secrets.toml
+            config = toml.load('.streamlit/secrets.toml')
+            kafka_config = config['kafka']
+            
+            # Determine if we're running locally or in the cloud
+            is_local = os.environ.get('DEPLOYMENT_ENV', 'local') == 'local'
+            bootstrap_servers = kafka_config['local_bootstrap_servers'] if is_local else kafka_config['cloud_bootstrap_servers']
+            
+            # Basic Kafka configuration
+            kafka_params = {
+                'kafka.bootstrap.servers': bootstrap_servers,
+                'startingOffsets': 'earliest'
+            }
+            
+            # Add security configuration for cloud deployment
+            if not is_local and kafka_config['security_protocol'] != "PLAINTEXT":
+                kafka_params.update({
+                    'kafka.security.protocol': kafka_config['security_protocol'],
+                    'kafka.sasl.mechanism': kafka_config['sasl_mechanism'],
+                    'kafka.sasl.jaas.config': f'org.apache.kafka.common.security.plain.PlainLoginModule required username="{kafka_config["username"]}" password="{kafka_config["password"]}";'
+                })
+            
+            return kafka_params
+        except Exception as e:
+            print(f"Error loading Kafka configuration: {str(e)}")
+            return {'kafka.bootstrap.servers': 'localhost:9092', 'startingOffsets': 'earliest'}
 
     def _create_spark_session(self, checkpoint_location):
         os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 pyspark-shell'

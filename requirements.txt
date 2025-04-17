@@ -9,4 +9,5 @@ six==1.16.0
 lz4==4.3.2
 xxhash==3.4.1
 zstandard==0.22.0
-python-snappy==0.6.1 
+python-snappy==0.6.1
+toml==0.10.2 
