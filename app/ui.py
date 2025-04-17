@@ -30,26 +30,38 @@ if 'product_consumer' not in st.session_state:
 
 # Initialize Kafka consumer
 def get_kafka_consumer(topic):
-    if topic == 'fraud_alerts' and st.session_state.fraud_consumer is None:
-        st.session_state.fraud_consumer = KafkaConsumer(
-            topic,
-            bootstrap_servers=['localhost:9092'],
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            consumer_timeout_ms=5000
-        )
-    elif topic == 'top_products' and st.session_state.product_consumer is None:
-        st.session_state.product_consumer = KafkaConsumer(
-            topic,
-            bootstrap_servers=['localhost:9092'],
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            consumer_timeout_ms=5000
-        )
+    # Get Kafka configuration from secrets
+    kafka_config = st.secrets.kafka
     
-    return st.session_state.fraud_consumer if topic == 'fraud_alerts' else st.session_state.product_consumer
+    if topic == kafka_config.fraud_alerts_topic and st.session_state.fraud_consumer is None:
+        try:
+            st.session_state.fraud_consumer = KafkaConsumer(
+                topic,
+                bootstrap_servers=[kafka_config.bootstrap_servers],
+                auto_offset_reset='earliest',
+                enable_auto_commit=True,
+                value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+                consumer_timeout_ms=5000
+            )
+        except Exception as e:
+            st.error(f"Failed to connect to Kafka: {str(e)}")
+            return None
+            
+    elif topic == kafka_config.top_products_topic and st.session_state.product_consumer is None:
+        try:
+            st.session_state.product_consumer = KafkaConsumer(
+                topic,
+                bootstrap_servers=[kafka_config.bootstrap_servers],
+                auto_offset_reset='earliest',
+                enable_auto_commit=True,
+                value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+                consumer_timeout_ms=5000
+            )
+        except Exception as e:
+            st.error(f"Failed to connect to Kafka: {str(e)}")
+            return None
+    
+    return st.session_state.fraud_consumer if topic == kafka_config.fraud_alerts_topic else st.session_state.product_consumer
 
 # Create two columns for the dashboard
 col1, col2 = st.columns(2)
