@@ -67,9 +67,6 @@ def get_kafka_consumer(topic):
     
     return st.session_state.fraud_consumer if topic == KAFKA_CONFIG['fraud_alerts_topic'] else st.session_state.product_consumer
 
-# Create two columns for the dashboard
-col1, col2 = st.columns(2)
-
 # Function to update fraud data
 def update_fraud_data():
     try:
@@ -123,94 +120,116 @@ def update_product_data():
         st.error(f"Error reading product data: {str(e)}")
 
 # Update data every 10 seconds
-if (datetime.now() - st.session_state.last_update).total_seconds() >= 10:
+if time.time() - st.session_state.last_update.timestamp() > 10:
     update_fraud_data()
     update_product_data()
     st.session_state.last_update = datetime.now()
 
-with col1:
+# Create containers for different sections
+fraud_section = st.container()
+product_section = st.container()
+
+# Fraud Alerts Section
+with fraud_section:
     st.header("Fraud Alerts")
     
-    # Create a line chart for fraud alerts
+    # Map at the top
     if st.session_state.fraud_data:
-        df_fraud = pd.DataFrame(st.session_state.fraud_data)
-        # Keep only last hour of data
-        df_fraud = df_fraud[df_fraud['timestamp'] > datetime.now() - timedelta(hours=1)]
+        fraud_df = pd.DataFrame(st.session_state.fraud_data)
+        fraud_df[['lat', 'lon']] = fraud_df['location'].str.split(', ', expand=True).astype(float)
         
-        # Aggregate fraud counts by timestamp
-        df_fraud_agg = df_fraud.groupby('timestamp')['fraud_count'].sum().reset_index()
-        # Calculate cumulative sum of fraud counts
-        df_fraud_agg['total_fraud_count'] = df_fraud_agg['fraud_count'].cumsum()
-        
-        # Line chart for fraud counts
-        fig_fraud = px.line(df_fraud_agg, 
-                          x='timestamp', 
-                          y='total_fraud_count',
-                          title='Cumulative Fraud Alerts Over Time')
-        fig_fraud.update_xaxes(title='Time')
-        fig_fraud.update_yaxes(title='Total Fraud Count')
-        st.plotly_chart(fig_fraud, use_container_width=True)
-        
-        # Create DataFrame for map with proper lat/lon columns
-        df_fraud['lat'] = df_fraud['location'].apply(lambda x: float(x.split(',')[0]))
-        df_fraud['lon'] = df_fraud['location'].apply(lambda x: float(x.split(',')[1]))
-        
-        # Create map of fraud locations
-        fig_map = px.scatter_mapbox(df_fraud,
-                                  lat='lat',
-                                  lon='lon',
-                                  hover_data=['timestamp', 'fraud_count', 'transaction_id'],
-                                  zoom=4,
-                                  title='Fraud Alert Locations')
-        
-        fig_map.update_layout(
-            mapbox_style='carto-positron',  # Use a light map style
-            mapbox=dict(
-                center=dict(lat=df_fraud['lat'].mean(), 
-                          lon=df_fraud['lon'].mean())
-            ),
-            height=400  # Set a fixed height for the map
+        fig_map = px.scatter_mapbox(
+            fraud_df,
+            lat='lat',
+            lon='lon',
+            hover_data=['timestamp', 'fraud_count', 'transaction_id'],
+            color='fraud_count',
+            size='fraud_count',
+            zoom=2,
+            height=400
         )
+        fig_map.update_layout(mapbox_style="carto-positron")
+        fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         st.plotly_chart(fig_map, use_container_width=True)
-        
-        # Display latest fraud alerts
-        st.subheader("Latest Fraud Alerts")
-        st.dataframe(
-            df_fraud.tail(5)[['timestamp', 'fraud_count', 'transaction_id', 'location']],
-            hide_index=True  # Hide the index column
-        )
-    else:
-        st.info("Waiting for fraud alerts...")
+    
+    # Chart and table side by side
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.session_state.fraud_data:
+            fraud_df = pd.DataFrame(st.session_state.fraud_data)
+            fraud_df['timestamp'] = pd.to_datetime(fraud_df['timestamp'])
+            fraud_df = fraud_df.sort_values('timestamp')
+            fraud_df['cumulative_fraud'] = fraud_df['fraud_count'].cumsum()
+            
+            fig = px.line(
+                fraud_df,
+                x='timestamp',
+                y='cumulative_fraud',
+                title='Cumulative Fraud Alerts Over Time'
+            )
+            fig.update_layout(
+                xaxis_title='Time',
+                yaxis_title='Cumulative Fraud Count',
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Waiting for fraud alerts...")
+    
+    with col2:
+        if st.session_state.fraud_data:
+            latest_fraud = pd.DataFrame(st.session_state.fraud_data[-10:])
+            st.dataframe(
+                latest_fraud[['timestamp', 'fraud_count', 'transaction_id', 'location']],
+                hide_index=True
+            )
+        else:
+            st.info("Waiting for fraud alerts...")
 
-with col2:
+# Top Products Section
+with product_section:
     st.header("Top Products")
     
-    # Create a bar chart for top products
-    if st.session_state.product_data:
-        df_products = pd.DataFrame(st.session_state.product_data)
-        # Keep only last hour of data
-        df_products = df_products[df_products['timestamp'] > datetime.now() - timedelta(hours=1)]
-        
-        # Group by product and sum quantities
-        df_products_grouped = df_products.groupby('product_name')['quantity'].sum().reset_index()
-        df_products_grouped = df_products_grouped.sort_values('quantity', ascending=False).head(10)
-        
-        fig_products = px.bar(df_products_grouped, x='product_name', y='quantity',
-                            title='Top 10 Products by Quantity')
-        st.plotly_chart(fig_products, use_container_width=True)
-        
-        # Display latest product data
-        st.subheader("Latest Product Updates")
-        st.dataframe(
-            df_products.tail(5)[['timestamp', 'product_name', 'quantity']],
-            hide_index=True  # Hide the index column
-        )
-    else:
-        st.info("Waiting for product data...")
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        if st.session_state.product_data:
+            product_df = pd.DataFrame(st.session_state.product_data)
+            product_df['timestamp'] = pd.to_datetime(product_df['timestamp'])
+            
+            # Group by product and sum quantities, then get top 10
+            top_products = product_df.groupby('product_name')['quantity'].sum().reset_index()
+            top_products = top_products.sort_values('quantity', ascending=False).head(10)
+            
+            fig = px.bar(
+                top_products,
+                x='product_name',
+                y='quantity',
+                title='Top 10 Products by Quantity'
+            )
+            fig.update_layout(
+                xaxis_title='Product',
+                yaxis_title='Quantity',
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Waiting for product data...")
+    
+    with col4:
+        if st.session_state.product_data:
+            latest_products = pd.DataFrame(st.session_state.product_data[-10:])
+            st.dataframe(
+                latest_products[['timestamp', 'product_name', 'quantity']],
+                hide_index=True
+            )
+        else:
+            st.info("Waiting for product data...")
 
-# Add a footer with last update time
+# Display latest update time
 st.markdown("---")
-st.markdown(f"Real-time Fraud Detection System | Last updated: {st.session_state.last_update.strftime('%Y-%m-%d %H:%M:%S')}")
+st.markdown(f"Last updated: {st.session_state.last_update.strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Rerun after 10 seconds
 time.sleep(10)
